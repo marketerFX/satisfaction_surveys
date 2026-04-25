@@ -9,7 +9,24 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
+  .upload-area {
+    margin-top: 16px;
+    background: rgba(255,255,255,0.15);
+    padding: 12px 16px;
+    border-radius: 12px;
+    border: 1px dashed rgba(255,255,255,0.4);
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .upload-area label { font-size: 14px; font-weight: 600; cursor: pointer; }
+  .upload-area input { font-size: 13px; color: white; cursor: pointer; }
+  .upload-area input::file-selector-button {
+    background: white; color: #4f46e5; border: none; padding: 6px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.2s;
+  }
+  .upload-area input::file-selector-button:hover { background: #f8fafc; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
     font-family: 'Sarabun', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -163,8 +180,13 @@
   <div class="header">
     <h1>📊 Satisfaction Survey Dashboard</h1>
     <div class="sub">สรุปผลแบบสำรวจความพึงพอใจผู้ใช้งาน</div>
-    <span class="badge">Period: 25 Feb 2026 – 23 Apr 2026</span>
-    <span class="badge live">● Updated 23 Apr 2026</span>
+    <span class="badge" id="badgePeriod">Period: 25 Feb 2026 – 23 Apr 2026</span>
+    <span class="badge live" id="badgeUpdated">● Updated 23 Apr 2026</span>
+    <br>
+    <div class="upload-area">
+      <label for="excelUpload">📁 อัปโหลดไฟล์ผลลัพธ์ (Excel/CSV):</label>
+      <input type="file" id="excelUpload" accept=".xlsx, .xls, .csv">
+    </div>
   </div>
 
   <!-- KPI Cards -->
@@ -260,85 +282,204 @@
 </div>
 
 <script>
-  // Rating Distribution (Doughnut) - Updated data
-  new Chart(document.getElementById('ratingChart'), {
-    type: 'doughnut',
-    data: {
-      labels: ['5 ดาว (Promoters)', '4 ดาว (Passives)', '3 ดาว (Detractors)'],
-      datasets: [{
-        data: [23, 3, 1],
-        backgroundColor: ['#10b981', '#f59e0b', '#ef4444'],
-        borderWidth: 0,
-        hoverOffset: 8
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { position: 'bottom', labels: { padding: 14, font: { size: 13 } } },
-        tooltip: { callbacks: { label: (c) => `${c.label}: ${c.parsed} คน (${(c.parsed/27*100).toFixed(1)}%)` } }
+  let ratingChartInstance = null;
+  let monthChartInstance = null;
+
+  function renderRatingChart(dataArr) {
+    if(ratingChartInstance) ratingChartInstance.destroy();
+    ratingChartInstance = new Chart(document.getElementById('ratingChart'), {
+      type: 'doughnut',
+      data: {
+        labels: ['5 ดาว (Promoters)', '4 ดาว (Passives)', '1-3 ดาว (Detractors)'],
+        datasets: [{
+          data: dataArr,
+          backgroundColor: ['#10b981', '#f59e0b', '#ef4444'],
+          borderWidth: 0,
+          hoverOffset: 8
+        }]
       },
-      cutout: '62%'
-    }
-  });
-
-  // Monthly Responses (Bar + Line) - Updated data
-  new Chart(document.getElementById('monthChart'), {
-    type: 'bar',
-    data: {
-      labels: ['Feb 2026', 'Mar 2026', 'Apr 2026'],
-      datasets: [
-        {
-          label: 'จำนวนผู้ตอบ',
-          data: [7, 1, 19],
-          backgroundColor: '#4f46e5',
-          borderRadius: 8,
-          yAxisID: 'y'
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom', labels: { padding: 14, font: { size: 13 } } },
+          tooltip: { callbacks: { label: (c) => `${c.label}: ${c.parsed} คน` } }
         },
-        {
-          label: 'คะแนนเฉลี่ย',
-          data: [4.43, 5.00, 4.95],
-          type: 'line',
-          borderColor: '#f59e0b',
-          backgroundColor: '#f59e0b',
-          tension: 0.3,
-          yAxisID: 'y1',
-          pointRadius: 5,
-          pointBackgroundColor: '#f59e0b'
-        }
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { position: 'bottom' } },
-      scales: {
-        y: { beginAtZero: true, position: 'left', title: { display: true, text: 'จำนวน' } },
-        y1: { beginAtZero: false, min: 3, max: 5, position: 'right', title: { display: true, text: 'คะแนน' }, grid: { drawOnChartArea: false } }
+        cutout: '62%'
       }
-    }
-  });
+    });
+  }
 
-  // Category Bars - Updated averages
-  const categories = [
+  function renderMonthChart(labels, countData, scoreData) {
+    if(monthChartInstance) monthChartInstance.destroy();
+    monthChartInstance = new Chart(document.getElementById('monthChart'), {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [
+          { label: 'จำนวนผู้ตอบ', data: countData, backgroundColor: '#4f46e5', borderRadius: 8, yAxisID: 'y' },
+          { label: 'คะแนนเฉลี่ย', data: scoreData, type: 'line', borderColor: '#f59e0b', backgroundColor: '#f59e0b', tension: 0.3, yAxisID: 'y1', pointRadius: 5 }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom' } },
+        scales: {
+          y: { beginAtZero: true, position: 'left', title: { display: true, text: 'จำนวน' } },
+          y1: { beginAtZero: false, min: 1, max: 5, position: 'right', title: { display: true, text: 'คะแนน' }, grid: { drawOnChartArea: false } }
+        }
+      }
+    });
+  }
+
+  function renderCategoryBars(categories) {
+    const container = document.getElementById('categoryBars');
+    container.innerHTML = '';
+    categories.forEach(c => {
+      const pct = (c.score / 5) * 100;
+      const row = document.createElement('div');
+      row.className = 'bar-row';
+      row.innerHTML = `
+        <div class="bar-label"><span>${c.name}</span><span class="score">${c.score.toFixed(2)} / 5</span></div>
+        <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+      `;
+      container.appendChild(row);
+    });
+  }
+
+  // --- Initial Static Render ---
+  renderRatingChart([23, 3, 1]);
+  renderMonthChart(['Feb 2026', 'Mar 2026', 'Apr 2026'], [7, 1, 19], [4.43, 5.00, 4.95]);
+  renderCategoryBars([
     { name: 'Usefulness (ประโยชน์)', score: 4.93 },
     { name: 'Data Completeness (ความครบถ้วน)', score: 4.89 },
     { name: 'Ease of Use (ใช้งานง่าย)', score: 4.85 },
     { name: 'UI Design (การออกแบบ)', score: 4.85 },
     { name: 'Search Accuracy (ความแม่นยำ)', score: 4.85 }
-  ];
-  const container = document.getElementById('categoryBars');
-  categories.forEach(c => {
-    const pct = (c.score / 5) * 100;
-    const row = document.createElement('div');
-    row.className = 'bar-row';
-    row.innerHTML = `
-      <div class="bar-label"><span>${c.name}</span><span class="score">${c.score.toFixed(2)} / 5</span></div>
-      <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
-    `;
-    container.appendChild(row);
+  ]);
+
+  // --- Excel Upload Logic ---
+  document.getElementById('excelUpload').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(evt) {
+      const data = new Uint8Array(evt.target.result);
+      const workbook = XLSX.read(data, {type: 'array'});
+      const json = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+      if(json.length > 0) processExcelData(json);
+      else alert("ไม่พบข้อมูลในไฟล์ Excel");
+    };
+    reader.readAsArrayBuffer(file);
   });
+
+  function getCol(row, keywords) {
+    const keys = Object.keys(row);
+    for (let k of keys) {
+      if (keywords.some(kw => k.toLowerCase().includes(kw))) return row[k];
+    }
+    return null;
+  }
+
+  function parseScore(val) {
+    if(!val) return null;
+    const match = val.toString().match(/[\d.]+/);
+    return match ? parseFloat(match[0]) : null;
+  }
+
+  function processExcelData(data) {
+    let totalScore = 0;
+    let scoreCount = 0;
+    let promoters = 0, passives = 0, detractors = 0;
+    let commentsCount = 0;
+    
+    let monthGroups = {};
+    let categorySums = { use:0, comp:0, ease:0, des:0, acc:0 };
+    let categoryCounts = { use:0, comp:0, ease:0, des:0, acc:0 };
+    let commentsHTML = '';
+
+    data.forEach(row => {
+      // Find rating
+      let ratingRaw = getCol(row, ['rating', 'คะแนน', 'พอใจ', 'score']);
+      let score = parseScore(ratingRaw);
+      if(score !== null && score <= 5) {
+        totalScore += score;
+        scoreCount++;
+        if(score >= 4.5) promoters++;
+        else if(score >= 3.5) passives++;
+        else detractors++;
+      }
+
+      // Find Date
+      let dateRaw = getCol(row, ['date', 'time', 'เวลา', 'วันที่']);
+      let monthKey = "Unknown";
+      if(dateRaw) {
+        let d;
+        if(typeof dateRaw === 'number') d = new Date(Math.round((dateRaw - 25569)*86400*1000)); // Excel serial
+        else d = new Date(dateRaw);
+        if(!isNaN(d)) monthKey = d.toLocaleString('en-US', {month:'short', year:'numeric'});
+      }
+      if(!monthGroups[monthKey]) monthGroups[monthKey] = { count: 0, scoreSum: 0 };
+      monthGroups[monthKey].count++;
+      if(score !== null) monthGroups[monthKey].scoreSum += score;
+
+      // Find Comment
+      let comment = getCol(row, ['comment', 'feedback', 'เสนอแนะ', 'คิดเห็น']);
+      if(comment && comment.toString().trim() !== '') {
+        commentsCount++;
+        let starStr = score ? '★'.repeat(Math.round(score)) + '☆'.repeat(5-Math.round(score)) : '';
+        let isWarn = score && score <= 3;
+        commentsHTML += \`<div class="comment \${isWarn?'warn':''}"><div class="stars">\${starStr} \${score?score+'/5':''}</div>\${comment}</div>\`;
+      }
+
+      // Categories
+      const u = parseScore(getCol(row, ['use', 'ประโยชน์'])); if(u) { categorySums.use+=u; categoryCounts.use++; }
+      const c = parseScore(getCol(row, ['complete', 'ครบ'])); if(c) { categorySums.comp+=c; categoryCounts.comp++; }
+      const e = parseScore(getCol(row, ['ease', 'ง่าย'])); if(e) { categorySums.ease+=e; categoryCounts.ease++; }
+      const d = parseScore(getCol(row, ['design', 'ออกแบบ'])); if(d) { categorySums.des+=d; categoryCounts.des++; }
+      const a = parseScore(getCol(row, ['accura', 'แม่นยำ'])); if(a) { categorySums.acc+=a; categoryCounts.acc++; }
+    });
+
+    // Update KPIs
+    const kpiValues = document.querySelectorAll('.kpi .value');
+    kpiValues[0].innerHTML = \`\${data.length}\`;
+    
+    const avg = scoreCount > 0 ? (totalScore/scoreCount).toFixed(2) : 0;
+    kpiValues[1].innerHTML = \`\${avg}<span class="unit"> / 5</span>\`;
+    
+    const promPct = scoreCount > 0 ? ((promoters/scoreCount)*100).toFixed(1) : 0;
+    kpiValues[2].innerHTML = \`\${promPct}<span class="unit">%</span>\`;
+    document.querySelectorAll('.kpi:nth-child(3) .note')[0].innerText = \`\${promoters} จาก \${scoreCount} ให้คะแนน 5 ดาว\`;
+
+    kpiValues[3].innerHTML = \`\${commentsCount}<span class="unit"> / \${data.length}</span>\`;
+    
+    // Update Charts
+    renderRatingChart([promoters, passives, detractors]);
+
+    const mLabels = Object.keys(monthGroups).sort((a,b)=> new Date(a)-new Date(b));
+    const mCounts = mLabels.map(l => monthGroups[l].count);
+    const mScores = mLabels.map(l => monthGroups[l].count > 0 ? (monthGroups[l].scoreSum / monthGroups[l].count).toFixed(2) : 0);
+    renderMonthChart(mLabels, mCounts, mScores);
+
+    // Update Categories
+    const safeAvg = (sum, cnt) => cnt > 0 ? sum/cnt : 0;
+    renderCategoryBars([
+      { name: 'Usefulness (ประโยชน์)', score: safeAvg(categorySums.use, categoryCounts.use) || avg },
+      { name: 'Data Completeness (ความครบถ้วน)', score: safeAvg(categorySums.comp, categoryCounts.comp) || avg },
+      { name: 'Ease of Use (ใช้งานง่าย)', score: safeAvg(categorySums.ease, categoryCounts.ease) || avg },
+      { name: 'UI Design (การออกแบบ)', score: safeAvg(categorySums.des, categoryCounts.des) || avg },
+      { name: 'Search Accuracy (ความแม่นยำ)', score: safeAvg(categorySums.acc, categoryCounts.acc) || avg }
+    ]);
+
+    // Update Comments
+    if(commentsHTML) document.querySelector('.comment-list').innerHTML = commentsHTML;
+    else document.querySelector('.comment-list').innerHTML = '<p>ไม่มีข้อเสนอแนะในไฟล์นี้</p>';
+    
+    // Update header Badges
+    document.getElementById('badgePeriod').innerText = 'Data from Uploaded File';
+    document.getElementById('badgeUpdated').innerText = '● Live Updated';
+
+    alert("ดึงข้อมูลจากไฟล์ Excel เสร็จสมบูรณ์!");
+  }
 </script>
 </body>
 </html>
