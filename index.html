@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Survey Analytics Dashboard</title>
+  <meta name="description" content="แดชบอร์ดวิเคราะห์ผลสำรวจความพึงพอใจ อัปโหลดข้อมูลจากไฟล์ Excel ได้ทันที" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Upload Overlay -->
+  <div id="uploadOverlay" class="upload-overlay">
+    <div class="upload-card">
+      <div class="upload-icon-wrap">
+        <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="12" y1="18" x2="12" y2="12"/>
+          <line x1="9" y1="15" x2="15" y2="15"/>
+        </svg>
+      </div>
+      <h1>Survey Analytics Dashboard</h1>
+      <p>อัปโหลดไฟล์ Excel หรือ CSV ของผลสำรวจเพื่อเริ่มวิเคราะห์ข้อมูล</p>
+
+      <label class="file-drop-zone" id="dropZone" for="fileInput">
+        <div class="drop-content">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <polyline points="16 16 12 12 8 16"/>
+            <line x1="12" y1="12" x2="12" y2="21"/>
+            <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+          </svg>
+          <span class="drop-title">ลากไฟล์มาวางที่นี่</span>
+          <span class="drop-sub">หรือคลิกเพื่อเลือกไฟล์ .xlsx, .xls, .csv</span>
+        </div>
+        <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" hidden />
+      </label>
+
+      <div id="fileInfo" class="file-info hidden"></div>
+      <div id="columnMapper" class="column-mapper hidden"></div>
+      <button id="analyzeBtn" class="btn-analyze hidden">🚀 วิเคราะห์ข้อมูล</button>
+      <button id="useDemoBtn" class="btn-demo">✨ ใช้ข้อมูลตัวอย่าง</button>
+    </div>
+  </div>
+
+  <!-- Dashboard -->
+  <div id="dashboard" class="dashboard hidden">
+    <!-- Header -->
+    <header class="dash-header">
+      <div class="header-left">
+        <div class="logo-mark">📊</div>
+        <div>
+          <h2 id="dashTitle">Survey Analytics</h2>
+          <span id="dashSubtitle" class="dash-subtitle">ผลการวิเคราะห์ผลสำรวจ</span>
+        </div>
+      </div>
+      <div class="header-right">
+        <span id="lastUpdated" class="last-updated"></span>
+        <button id="reUploadBtn" class="btn-reupload">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="16 16 12 12 8 16"/>
+            <line x1="12" y1="12" x2="12" y2="21"/>
+            <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+          </svg>
+          อัปโหลดใหม่
+        </button>
+      </div>
+    </header>
+
+    <!-- Upload bar (compact) -->
+    <div class="upload-bar">
+      <label class="upload-bar-label" for="fileInputBar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        อัปโหลดไฟล์ Excel/CSV:
+      </label>
+      <input type="file" id="fileInputBar" accept=".xlsx,.xls,.csv" />
+      <span id="fileNameBar" class="file-name-bar"></span>
+    </div>
+
+    <!-- KPI Cards -->
+    <section class="kpi-section">
+      <div class="kpi-card" id="kpiTotal">
+        <div class="kpi-label">TOTAL RESPONSES</div>
+        <div class="kpi-badge positive" id="kpiBadgeTotal"></div>
+        <div class="kpi-value" id="kpiValueTotal">—</div>
+        <div class="kpi-sub" id="kpiSubTotal"></div>
+      </div>
+      <div class="kpi-card" id="kpiRating">
+        <div class="kpi-label">AVERAGE RATING</div>
+        <div class="kpi-badge positive" id="kpiBadgeRating"></div>
+        <div class="kpi-value" id="kpiValueRating">—</div>
+        <div class="kpi-sub" id="kpiSubRating"></div>
+      </div>
+      <div class="kpi-card" id="kpiPromoter">
+        <div class="kpi-label">% PROMOTERS (5★)</div>
+        <div class="kpi-badge positive" id="kpiBadgePromoter"></div>
+        <div class="kpi-value" id="kpiValuePromoter">—</div>
+        <div class="kpi-sub" id="kpiSubPromoter"></div>
+      </div>
+      <div class="kpi-card" id="kpiComments">
+        <div class="kpi-label">COMMENTS PROVIDED</div>
+        <div class="kpi-badge positive" id="kpiBadgeComments"></div>
+        <div class="kpi-value" id="kpiValueComments">—</div>
+        <div class="kpi-sub" id="kpiSubComments"></div>
+      </div>
+    </section>
+
+    <!-- Charts Row -->
+    <section class="charts-row">
+      <div class="chart-card">
+        <div class="chart-header">
+          <span class="chart-dot green"></span>
+          <h3>Rating Distribution</h3>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="ratingChart"></canvas>
+        </div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-header">
+          <span class="chart-dot blue"></span>
+          <h3>Responses by Month</h3>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="monthChart"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- Category Averages -->
+    <section class="category-section" id="categorySection">
+      <div class="section-header">
+        <span class="chart-dot purple"></span>
+        <h3>คะแนนเฉลี่ยแต่ละหมวด (Category Averages)</h3>
+      </div>
+      <div id="categoryBars" class="category-bars"></div>
+    </section>
+
+    <!-- Voice of Customer -->
+    <section class="voc-section">
+      <div class="section-header">
+        <span class="chart-dot orange"></span>
+        <h3>💬 Voice of Customer (ความคิดเห็นจากผู้ใช้)</h3>
+        <div class="voc-filter">
+          <button class="voc-filter-btn active" data-filter="all">ทั้งหมด</button>
+          <button class="voc-filter-btn" data-filter="5">⭐ 5</button>
+          <button class="voc-filter-btn" data-filter="4">⭐ 4</button>
+          <button class="voc-filter-btn" data-filter="3">⭐ 3</button>
+          <button class="voc-filter-btn" data-filter="low">⭐ ≤2</button>
+        </div>
+      </div>
+      <div id="vocGrid" class="voc-grid"></div>
+    </section>
+
+    <!-- Key Insights -->
+    <section class="insights-section">
+      <div class="section-header">
+        <span class="chart-dot yellow"></span>
+        <h3>🚀 Key Insights & ข้อแนะนำ</h3>
+      </div>
+      <div id="insightsList" class="insights-list"></div>
+    </section>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
